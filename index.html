@@ -1,85 +1,175 @@
 <!DOCTYPE html>
-<html>
+<html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>MPD Player</title>
+<title>Live TV Player</title>
 
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/shaka-player.compiled.js"></script>
 
 <style>
+
 body{
-  background:#111;
-  font-family:Arial;
-  text-align:center;
-  color:white;
+    background:#0f172a;
+    font-family:sans-serif;
+    margin:0;
+    color:white;
 }
 
-#thumbnail{
-  width:400px;
-  cursor:pointer;
-  border-radius:10px;
+header{
+    background:#020617;
+    padding:15px;
+    text-align:center;
+    font-size:22px;
 }
 
-#videoPlayer{
-  width:80%;
-  max-width:900px;
-  margin-top:20px;
-  display:none;
+.player{
+    max-width:900px;
+    margin:auto;
+    padding:20px;
 }
+
+video{
+    width:100%;
+    border-radius:10px;
+    background:black;
+}
+
+.channels{
+    max-width:900px;
+    margin:auto;
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+    gap:15px;
+    padding:20px;
+}
+
+.channel{
+    background:#1e293b;
+    border-radius:10px;
+    text-align:center;
+    cursor:pointer;
+    padding:10px;
+    transition:0.2s;
+}
+
+.channel:hover{
+    background:#334155;
+}
+
+.channel img{
+    width:100%;
+    border-radius:8px;
+}
+
+.channel p{
+    margin:8px 0 0 0;
+}
+
 </style>
 </head>
 
 <body>
 
-<h2>MONO29 HD</h2>
+<header>
+📺 Live IPTV THAILAND
+</header>
 
-<img id="thumbnail"
-src="https://img5.pic.in.th/file/secure-sv1/mono_29.png">
+<div class="player">
+<video id="video" controls autoplay></video>
+</div>
 
-<br>
+<div class="channels">
 
-<video id="videoPlayer" controls autoplay></video>
+<!-- ช่อง HLS -->
+<div class="channel"
+onclick="playStream('https://ch3-33-web.cdn.byteark.com/live/playlist.m3u8?x_ark_access_id=D78MkxZFEr5Zr9PE&x_ark_auth_type=ark-v2&x_ark_expires=1773507302&x_ark_max_resolution=720p&x_ark_path_prefix=/live/&x_ark_signature=DqqhRrHvImT9P0RVkiy5Dw')">
+<img src="https://dookeela4.live/uploads/1685812254.png">
+<p>CH3</p>
+</div>
+
+<!-- ช่อง DASH -->
+<div class="channel"
+onclick="playStream(
+'https://udn-streamer1.cdn.3bbtv.com:8443/3bb/live/29/29.mpd',
+'96a14b36335645b391bbbb48c424fec7',
+'e6971b27837a4822832d8215156bb516'
+)">
+<img src="https://dookeela4.live/uploads/1703787713.png">
+<p>ThairathTV HD</p>
+</div>
+
+</div>
+
 
 <script>
 
-const manifestUri =
-"https://cri-streamer3.cdn.3bbtv.com:8443/3bb/live/29/29.mpd";
+var video = document.getElementById('video');
+var hls;
+var shakaPlayer;
 
-const licenseKeyId = "96a14b36335645b391bbbb48c424fec7";
-const licenseKey   = "e6971b27837a4822832d8215156bb516";
+async function playStream(url,keyId=null,key=null){
 
-async function initPlayer(){
+    video.pause();
 
-const video = document.getElementById('videoPlayer');
-const player = new shaka.Player(video);
+    // destroy player เก่า
+    if(hls){
+        hls.destroy();
+        hls = null;
+    }
 
-player.configure({
-drm:{
-clearKeys:{
-[licenseKeyId]: licenseKey
+    if(shakaPlayer){
+        await shakaPlayer.destroy();
+        shakaPlayer = null;
+    }
+
+    // ตรวจว่าเป็น DASH (.mpd)
+    if(url.includes(".mpd")){
+
+        shakaPlayer = new shaka.Player(video);
+
+        if(keyId && key){
+            shakaPlayer.configure({
+                drm:{
+                    clearKeys:{
+                        [keyId]: key
+                    }
+                }
+            });
+        }
+
+        try{
+            await shakaPlayer.load(url);
+            video.play();
+        }
+        catch(e){
+            console.error("Shaka error",e);
+        }
+
+    }
+
+    // ตรวจว่าเป็น HLS (.m3u8)
+    else if(url.includes(".m3u8")){
+
+        if(Hls.isSupported()){
+
+            hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+
+            hls.on(Hls.Events.MANIFEST_PARSED,function(){
+                video.play();
+            });
+
+        } 
+        else if(video.canPlayType('application/vnd.apple.mpegurl')){
+            video.src = url;
+            video.play();
+        }
+
+    }
+
 }
-}
-});
-
-try{
-await player.load(manifestUri);
-console.log("Video loaded");
-}catch(e){
-console.error("Error loading",e);
-}
-
-}
-
-document.getElementById("thumbnail").onclick = function(){
-
-this.style.display="none";
-
-const video = document.getElementById("videoPlayer");
-video.style.display="block";
-
-initPlayer();
-
-};
 
 </script>
 
