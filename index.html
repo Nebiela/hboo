@@ -1,177 +1,281 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-<meta charset="UTF-8">
-<title>Live TV Player</title>
+    <meta charset="UTF-8">
+    <!-- บังคับไม่ให้ซูม เพื่อให้เหมือนแอปพลิเคชัน -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>แอป Display TV</title>
+    <style>
+        :root {
+            --focus-color: #00ffcc;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+        }
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/shaka-player.compiled.js"></script>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; /* ป้องกันการเลื่อนหน้าจอด้วยเมาส์ */
+        }
 
-<style>
+        /* โครงสร้างหน้าจอ */
+        #app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
 
-body{
-    background:#0f172a;
-    font-family:sans-serif;
-    margin:0;
-    color:white;
+        header {
+            padding: 20px 40px;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        /* คลาสสำหรับปุ่มที่สามารถถูกโฟกัสด้วยรีโมทได้ */
+        .focusable {
+            border: 4px solid transparent;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+
+        /* เมื่อรีโมทเลื่อนมาโฟกัสที่จุดนี้ */
+        .focusable.focused {
+            border-color: var(--focus-color);
+            transform: scale(1.05);
+            box-shadow: 0 0 15px var(--focus-color);
+            outline: none; /* ซ่อน outline ปกติของเบราว์เซอร์ */
+        }
+
+        #fullscreen-btn {
+            padding: 10px 20px;
+            background-color: #3b82f6;
+            color: white;
+            font-size: 16px;
+            border-radius: 8px;
+        }
+
+/* 1. จัดการพื้นที่แสดงผลหลักให้เป็น Grid แนวนอน (เหมาะสำหรับ Android TV) */
+#content-grid {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    overflow-x: auto; /* ป้องกันการล้นแนวตั้ง ให้เลื่อนซ้ายขวาแทน */
 }
 
-header{
-    background:#020617;
-    padding:15px;
-    text-align:center;
-    font-size:22px;
+/* 2. กำหนดขนาดที่แน่นอนให้กับการ์ด และซ่อนส่วนที่เกิน */
+.video-card {
+    position: relative;
+    width: 320px;         /* กำหนดความกว้างของการ์ด */
+    height: 180px;        /* กำหนดความสูงของการ์ด (สัดส่วน 16:9) */
+    border-radius: 12px;  /* ทำมุมโค้งมน */
+    overflow: hidden;     /* สั่งซ่อนภาพส่วนที่ล้นออกนอกตัวการ์ด */
+    background-color: #202020;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: transform 0.2s, border 0.2s;
 }
 
-.player{
-    max-width:900px;
-    margin:auto;
-    padding:20px;
+/* เอฟเฟกต์เมื่อโฟกัสการ์ด */
+.video-card:focus {
+    transform: scale(1.05);
+    outline: none;
+    border: 3px solid #ffffff; /* เส้นขอบเด่นชัดขึ้นเมื่อกดรีโมทมาโดน */
 }
 
-video{
-    width:100%;
-    border-radius:10px;
-    background:black;
+/* 3. บังคับให้รูปภาพมีขนาดพอดีกับการ์ดเสมอ ไม่ว่ารูปจริงจะใหญ่แค่ไหน */
+.video-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;    /* บังคับภาพขยายเต็มพื้นที่การ์ด โดยไม่เสียสัดส่วน */
+    display: block;
 }
 
-.channels{
-    max-width:900px;
-    margin:auto;
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
-    gap:15px;
-    padding:20px;
+/* 4. จัดวางตัวหนังสือให้อยู่ด้านบนหรือด้านล่างภาพ (เลือกตามชอบ) */
+.card-title {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8)); /* เงาดำจางๆ ช่วยให้เห็นอักษรชัด */
+    color: white;
+    font-size: 16px;
+    margin: 0;
 }
 
-.channel{
-    background:#1e293b;
-    border-radius:10px;
-    text-align:center;
-    cursor:pointer;
-    padding:10px;
-    transition:0.2s;
-}
 
-.channel:hover{
-    background:#334155;
-}
-
-.channel img{
-    width:100%;
-    border-radius:8px;
-}
-
-.channel p{
-    margin:8px 0 0 0;
-}
-
-</style>
+        #message-box {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: none;
+        }
+    </style>
 </head>
-
 <body>
 
-<header>
-📺 Live IPTV THAILAND
-</header>
-
-<div class="player">
-<video id="video" controls autoplay></video>
-</div>
-
-<div class="channels">
-
-<!-- ช่อง HLS -->
-<div class="channel"
-onclick="playStream('https://ch3-33-web.cdn.byteark.com/live/playlist.m3u8?x_ark_access_id=D78MkxZFEr5Zr9PE&x_ark_auth_type=ark-v2&x_ark_expires=1773507302&x_ark_max_resolution=720p&x_ark_path_prefix=/live/&x_ark_signature=DqqhRrHvImT9P0RVkiy5Dw')">
-<img src="https://dookeela4.live/uploads/1685812254.png">
-<p>CH3</p>
-</div>
-
-<!-- ช่อง DASH -->
-<div class="channel"
-onclick="playStream(
-'https://udn-streamer1.cdn.3bbtv.com:8443/3bb/live/29/29.mpd',
-'96a14b36335645b391bbbb48c424fec7',
-'e6971b27837a4822832d8215156bb516'
-)">
-<img src="https://dookeela4.live/uploads/1703787713.png">
-<p>ThairathTV HD</p>
-</div>
-
-</div>
+    <div id="app-container">
+        <header>
+            <h1>แอปเว็บ สำหรับ Android TV 🎬</h1>
+            <!-- ใส่ tabindex เพื่อให้กดโฟกัสได้ -->
+            <button id="fullscreen-btn" class="focusable" tabindex="0">เข้าสู่โหมดเต็มจอ</button>
+        </header>
+        <div id="content-grid">
 
 
-<script>
 
-var video = document.getElementById('video');
-var hls;
-var shakaPlayer;
+              <!-- การ์ดที่ 1: ใส่รูปภาพประกอบ -->
+    <div class="focusable video-card" tabindex="0" data-id="2" data-url="https://noodlemagazine.com/popular/month?sort_by=views&sort_order=desc">
+        <img src="https://raw.githubusercontent.com/Nebiela/playeriptv/refs/heads/main/%E0%B8%89.jpg" alt="Thumbnail 2" class="card-thumb">
+        <div class="card-title">สำหรับ 18+</div>
+        </div>
+       <!-- การ์ดที่ 2: ใส่รูปภาพประกอบ -->
+    <div class="focusable video-card" tabindex="0" data-id="2" data-url="https://fhchannel.com/">
+        <img src="https://raw.githubusercontent.com/Nebiela/playeriptv/refs/heads/main/%E0%B8%89.jpg" alt="Thumbnail 2" class="card-thumb">
+        <div class="card-title">สำหรับ 18+</div>
+        </div>
+          
+    </div>
 
-async function playStream(url,keyId=null,key=null){
+    <div id="message-box"></div>
 
-    video.pause();
+    <script>
+        // --- ระบบจัดการ Fullscreen ---
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    showMessage(`เกิดข้อผิดพลาด: ${err.message}`);
+                });
+                fullscreenBtn.innerText = "ออกจากโหมดเต็มจอ";
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.innerText = "เข้าสู่โหมดเต็มจอ";
+            }
+        });
 
-    // destroy player เก่า
-    if(hls){
-        hls.destroy();
-        hls = null;
-    }
+        // --- ระบบ Spatial Navigation (การควบคุมด้วยรีโมท D-Pad) ---
+        // ดึงอิลิเมนต์ทั้งหมดที่สามารถโฟกัสได้มาเก็บไว้
+        const focusableElements = Array.from(document.querySelectorAll('.focusable'));
+        let currentIndex = 0;
 
-    if(shakaPlayer){
-        await shakaPlayer.destroy();
-        shakaPlayer = null;
-    }
+        // ฟังก์ชันตั้งค่าโฟกัส
+        function setFocus(index) {
+            // ลบ class focused ออกจากตัวเก่า
+            focusableElements.forEach(el => el.classList.remove('focused'));
+            
+            // จำกัดให้อยู่ในช่วงที่มีอยู่
+            if (index < 0) index = 0;
+            if (index >= focusableElements.length) index = focusableElements.length - 1;
+            
+            currentIndex = index;
+            const currentElement = focusableElements[currentIndex];
+            currentElement.classList.add('focused');
+            currentElement.focus();
 
-    // ตรวจว่าเป็น DASH (.mpd)
-    if(url.includes(".mpd")){
+            // เลื่อนหน้าจอตามหากส่วนนั้นโดนบัง
+            currentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
 
-        shakaPlayer = new shaka.Player(video);
+        // เริ่มต้นด้วยการโฟกัสตัวแรก
+        setFocus(currentIndex);
 
-        if(keyId && key){
-            shakaPlayer.configure({
-                drm:{
-                    clearKeys:{
-                        [keyId]: key
+        // ดักจับการกดปุ่มจากรีโมท (รีโมท Android TV จะส่งค่ามาเป็น Arrow Keys และ Enter)
+        document.addEventListener('keydown', (e) => {
+            // ตรวจสอบว่าหน้าจอกว้างเท่าไหร่ เพื่อคำนวณการกด ลง/ขึ้น ว่าควรข้ามไปกี่คอลัมน์
+            const gridColumns = getComputedStyle(document.getElementById('content-grid')).gridTemplateColumns.split(' ').length;
+
+            switch(e.key) {
+                case 'ArrowRight':
+                    e.preventDefault(); // ป้องกันการเลื่อนหน้าจอปกติ
+                    setFocus(currentIndex + 1);
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    setFocus(currentIndex - 1);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    // ถ้าอยู่ที่ปุ่มด้านบน (index 0) ให้ลงมาเนื้อหาแรก (index 1)
+                    if (currentIndex === 0) {
+                        setFocus(1);
+                    } else {
+                        // คำนวณเลื่อนลงตามจำนวนคอลัมน์
+                        setFocus(currentIndex + gridColumns);
+                    }
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (currentIndex > 0 && currentIndex <= gridColumns) {
+                        // ถ้าอยู่แถวแรกของเนื้อหา ให้กลับไปโฟกัสปุ่มด้านบน
+                        setFocus(0);
+                    } else if (currentIndex > gridColumns) {
+                        setFocus(currentIndex - gridColumns);
+                    }
+                    break;
+                case 'Enter': // ปุ่ม OK บนรีโมท
+                    e.preventDefault();
+                    const activeElement = focusableElements[currentIndex];
+                    if (activeElement === fullscreenBtn) {
+                        activeElement.click(); // เรียกคำสั่ง Fullscreen
+                    } else {
+                        const url = activeElement.getAttribute('data-url');
+                        if (url) {
+                            // ถ้ามีการระบุลิงก์ใน data-url ให้เปิดเว็บนั้น
+                            window.location.href = url; 
+                        } else {
+                            const contentId = activeElement.getAttribute('data-id');
+                            showMessage(`คุณกดเลือก: เนื้อหาที่ ${contentId}`);
+                        }
+                    }
+                    break;
+            }
+        });
+
+        // ฟังก์ชันแสดงข้อความชั่วคราว
+        function showMessage(text) {
+            const msgBox = document.getElementById('message-box');
+            msgBox.innerText = text;
+            msgBox.style.display = 'block';
+            setTimeout(() => {
+                msgBox.style.display = 'none';
+            }, 3000);
+        }
+
+        // กรณีใช้เมาส์คลิก (เพื่อรองรับการใช้งานทั่วไปด้วย)
+        focusableElements.forEach((el, index) => {
+            el.addEventListener('mouseover', () => setFocus(index));
+            el.addEventListener('click', () => {
+                setFocus(index);
+                if (el !== fullscreenBtn) {
+                    const url = el.getAttribute('data-url');
+                    if (url) {
+                        // รองรับการคลิกเมาส์ให้เปลี่ยนหน้าเช่นกัน
+                        window.location.href = url;
+                    } else {
+                        showMessage(`คุณคลิกเลือก: เนื้อหาที่ ${el.getAttribute('data-id')}`);
                     }
                 }
             });
-        }
-
-        try{
-            await shakaPlayer.load(url);
-            video.play();
-        }
-        catch(e){
-            console.error("Shaka error",e);
-        }
-
-    }
-
-    // ตรวจว่าเป็น HLS (.m3u8)
-    else if(url.includes(".m3u8")){
-
-        if(Hls.isSupported()){
-
-            hls = new Hls();
-            hls.loadSource(url);
-            hls.attachMedia(video);
-
-            hls.on(Hls.Events.MANIFEST_PARSED,function(){
-                video.play();
-            });
-
-        } 
-        else if(video.canPlayType('application/vnd.apple.mpegurl')){
-            video.src = url;
-            video.play();
-        }
-
-    }
-
-}
-
-</script>
-
+        });
+    </script>
 </body>
+    จัดทำขึ้นเพื่อความบันเทิงภายในครอบครัวเท่านั้น ไม่ได้จำหน่าย By NETI
 </html>
